@@ -1,65 +1,55 @@
-import asyncio
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
+import time
 
 class BrowserAutomationEngine:
     def __init__(self):
+        self.pw = None
         self.browser = None
-        self.context = None
         self.page = None
 
-    async def initialize_session(self):
-        """Initializes Chromium instance and browser context."""
-        playwright = await async_playwright().start()
-        self.browser = await playwright.chromium.launch(headless=False)
-        self.context = await self.browser.new_context()
-        self.page = await self.context.new_page()
-        print("[INFO]: Browser session initialized.")
+    def start(self, url):
+        print(f"[INFO]: Starting Playwright (Sync Mode)...")
+        self.pw = sync_playwright().start()
+        # launch(headless=False) lets you see it happen
+        self.browser = self.pw.chromium.launch(headless=False)
+        self.page = self.browser.new_page()
+        self.page.goto(url)
+        print(f"[INFO]: Browser opened at {url}")
 
-    async def capture_dom_state(self):
-        """Parses the current viewport for interactive DOM elements."""
-        title = await self.page.title()
-        # Identifying actionable nodes for future heuristic analysis
-        selectors = 'button, a, input, textarea, [role="button"]'
-        elements = await self.page.query_selector_all(selectors)
+    def run_logic(self):
+        print("[LOG]: Scanning page for search input...")
+        # Wait for the element to be ready
+        self.page.wait_for_selector("input#searchInput")
         
-        print(f"[LOG]: State captured. Title: '{title}' | Actionable Nodes: {len(elements)}")
-        return {"title": title, "node_count": len(elements)}
-
-    async def dispatch_action(self, action_type, selector, value=None):
-        """Executes low-level browser interactions based on input parameters."""
-        print(f"[EXEC]: {action_type.upper()} operation on target: {selector}")
+        # Act
+        self.page.fill("input#searchInput", "Artificial Intelligence")
+        self.page.keyboard.press("Enter")
         
-        if action_type == "type":
-            await self.page.fill(selector, value)
-            await self.page.keyboard.press("Enter")
-        elif action_type == "click":
-            await self.page.click(selector)
-            
-        # Ensure network overhead is resolved before proceeding
-        await self.page.wait_for_load_state("networkidle")
+        # Verify
+        self.page.wait_for_load_state("networkidle")
+        print(f"[STATUS]: Success! Current Page: {self.page.title()}")
+        
+        # Proof for the manager
+        self.page.screenshot(path="success.png")
+        print("[INFO]: success.png created.")
+        time.sleep(2) # Just so you can see it before it closes
 
-    async def terminate_session(self):
-        """Gracefully closes browser and cleans up resources."""
-        await self.browser.close()
-        print("[INFO]: Session terminated.")
+    def stop(self):
+        if self.browser:
+            self.browser.close()
+        if self.pw:
+            self.pw.stop()
+        print("[INFO]: Session closed cleanly.")
 
-async def main():
-    # Production Workflow Simulation
+def main():
     engine = BrowserAutomationEngine()
-    await engine.initialize_session()
-    
-    # Navigation Layer
-    await engine.page.goto("https://www.wikipedia.org")
-    
-    # State Analysis Layer
-    await engine.capture_dom_state()
-    
-    # Interaction Layer (Manual override until LLM integration)
-    await engine.dispatch_action("type", "input#searchInput", "Artificial Intelligence")
-    
-    print("\n[STATUS]: Local infrastructure verified. Ready for LLM integration.")
-    await asyncio.sleep(2)
-    await engine.terminate_session()
+    try:
+        engine.start("https://www.wikipedia.org")
+        engine.run_logic()
+    except Exception as e:
+        print(f"[ERROR]: {e}")
+    finally:
+        engine.stop()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
